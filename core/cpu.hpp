@@ -49,14 +49,62 @@ class RegisterFile {
 }; 
 
 
+enum class InstructionType{
+	R,//register-register arithmetic, opcodes: 0x33
+	I,/*immediate arithmetic, opcodes: 0x13(ALU imm), 0x03(loads),
+	0x67(jump and link registers), 0x73(system calls), 0x0F(memory fences)
+	*/
+	S,//stores, opcode: 0x23
+	B,//branches, opcode: 0x63
+	U,//upper immediates, opcodes: 0x37(load upper imm), 0x17(auipc)
+	J,//jump and link, opcode: 0x6F
+	UNKNOWN
+}; 
+
+typedef struct DecodedInstruction {
+	int32_t imm; //immediate value, 
+	uint8_t opcode = 0; 
+	uint8_t rd; //destination register
+	uint8_t funct3; //sub oberatio identifier 3 bit
+	uint8_t rs1; //first source register
+	uint8_t rs2; //second source register
+	uint8_t funct7; //7 bit sub operation identifier
+	InstructionType type = InstructionType::UNKNOWN; 
+}DecodedInstruction;
+
+typedef static constexpr uint8_t mask; 
+
 class CPU {
 	private: 
 		Memory ram_; 
 		RegisterFile regs;
 		uint32_t pc_ = 0x80000000; 
+		void clk();
+		enum class InstructionType; 
+		DecodedInstruction; 
+		DecodedInstruction decode(uint32_t instruction);
+		mask MASK_3bit = 0x07; 
+		mask MASK_4bit = 0x0F
+		mask MASK_5bit = 0x1F;
+		mask MASK_6bit = 0x3F; 
+		mask MASK_7bit = 0x7F; 
+		mask MASK_8bit = 0xFF;
+		static constexpr uint16_t MASK_10bit = 0x03FF;
+		static constexpr uint16_t MASK_12bit = 0x0FFF;
 	public: 
-		
+		uint32_t read_pc();
+		void reset(); 
 };
+
+
+class ALU {
+	private: //addi,  
+
+	public:
+};
+
+
+
 
 #endif // CPU_HPP
 

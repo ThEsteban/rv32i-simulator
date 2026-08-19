@@ -81,3 +81,100 @@ void RegisterFile::write(std::size_t index, uint32_t value) {
 	if (index == 0) return; 
 	registers_[index] = value; 
 }
+
+void CPU::clk(){
+	this.pc_ = this.pc_ + 4; 
+	uint32_t instruction = memory_.load_uw(pc_); 
+	DecodedInstruction decInstruction = decode(instruction);
+}
+
+DecodedInstruction CPU::decode(uint32_t instruction){
+	DecodedInstruction decInstruction; 
+	decInstruction.opcode = instruction & 0x7F ; //isiolate bottom 7 bits
+	switch(decInstruction.opcode){// switch to fetch type of instruction 
+	case 0x33: 
+		decInstruction.type = InstructionType::R ; 
+		break; 
+	case 0x13:
+	case 0x03:
+	case 0x67:
+	case 0x73:
+	case 0x0F:
+		decInstruction.type = InstructionType::I ; 
+		break; 
+	case 0x23:
+		decInstruction.type = InstructionType::S ; 
+		break;
+	case 0x63:
+		decInstruction.type = InstructionType::B; 
+		break;
+	case 0x37:
+	case 0x17:
+		decInstruction.type = InstructionType::U ; 
+		break; 
+	case 0x6F:
+		decInstruction.type = InstructionType::J ;
+		break;
+	default:
+		decInstruction.type = InstructionType::UNKNOWN; 
+	}
+	switch(decInstruction.type){ // fetch necessary bits for each op
+	case InstructionType::R :
+		decInstruction.rd = (instruction>>7) & MASK_5bit ; 
+		decInstruction.funct3 = (instruction >>12) & MASK_3bit; 
+		decInstruction.rs1 = (instruction >>15) & MASK_5bit ; 
+		decInstruction.rs2 = (instruction >> 20 ) & MASK_5bit;
+		decInstruction.funct7 = (instruction >>25) & MASK_7bit; 
+		break; 
+	case InstructionType::I : 
+		decInstruction.imm = (instruction >>25) & MASK_12bit; 
+		decInstruction.rd = (instruction >> 7) & MASK_5bit;
+		decInstruction.funct3 = (instruction >> 12 ) & MASK_3bit; 
+		decInstruction.rs1 = (instruction >>15) & MASK_5bit; 
+		decInstruction.rs2 = (instruction >>20) & MASK_5bit; 
+		break; 
+	case InstructionType::S : 
+		decInstruction.imm = (instruction >> 7 ) & MASK_5bit;//process to get 12 bit immediate 
+		uint16_t imms2 = (instruction >> 20) & MASK_12bit; //immediate s-type part 2
+		decInstruction.imm = decInstruction.imm | imm2; //
+		decInstruction.funct3 = (instruction >> 12) & MASK_3bit; 
+		decInstruction.rs1 = (instruction >> 15) & MASK_5bit; 
+		decInstruction.rs2 = (instruction >>20) & MASK_5bit; 
+		break; 
+	case InstructionType::B :
+		/*decInstruction.imm = (instruction <<4 ) & 0x800 ; //isolate instr[7] and put it in imm[11]
+		uint8_t immb2 = (instruction >> 7) & 0x1E ; //isolate lowest 4 bits for imm b type
+		uint16_t immb3 = (instruction >>20) & 0x07E0; //isolate imm[10:5] 
+		uint16_t immb4 = (instruction >>19) & 0x1000; //isolate imm[12]		sign extend
+		decInstruction.imm = ((decInstruction.imm | immb2 | immb3 | immb4) <<19) >>19; //combine into 12bitimm
+		*/
+		uint32_t raw_imm = ((instruction >> 19) & 0x1000) | // imm[12]
+                       ((instruction << 4)  & 0x0800) | // imm[11]
+                       ((instruction >> 20) & 0x07E0) | // imm[10:5]
+                       ((instruction >> 7)  & 0x001E);  // imm[4:1]
+        decInstruction.imm = static_cast<int32_t>((raw_imm <<19)>>19); 
+		decInstruction.funct3 = (instruction >> 12) & MASK_3bit; 
+		decInstruction.rs1 = (instruction >> 15) & MASK_5bit; 
+		decInstruction.rs2 = (instruction >> 20) & MASK_5bit; 
+		break; 
+	case InstructionType::U :
+		decInstruction.rd = (instruction >> 7) & MASK_5bit; 
+		decInstruction.imm = static_cast<int32_t>(instruction & 0xFFFFF000); 
+		break;
+	case InstructionType::J :
+		decInstruction.rd = (instruction >> 7) & MASK_5bit; 
+		uint32_t raw_immj= ((instruction >>20) & 0x07FE) | //imm[10:1]
+							((instruction>>11) & 0x100000) | //imm[20]
+							((instruction >>9 ) & 0x800) | // imm[11]
+							( instruction  & 0x000FF000); // imm[19:12]
+		decInstruction.imm = static_cast<int32_t>(raw_immj << 11) >> 11; 
+		break;
+	default InstructionType::UNKNOWN :
+		//handle illegal instruction in execution phase, 
+	}
+	return decInstruction ; 
+}
+
+uint32_t CPU::read_pc(){
+	return pc_; 
+}
