@@ -72,12 +72,34 @@ struct DecodedInstruction {
 	InstructionType type = InstructionType::UNKNOWN; 
 };
 
+enum class ALUop{
+	ADD, //arithmetic operations
+	SUB,
+	AND,//logical operations
+	OR,
+	XOR,
+	SLL,//shift operations, left
+	SRL,//right
+	SRA,//arithmetic right 
+	SLT,	//comparisons, signed set less than, unisgned set less than
+	SLTU
+}; 
+
+class ALU {
+	public://compute
+	static uint32_t compute(uint32_t a , uint32_t b, ALUop operation); //static to test easier, 
+};
+
 
 class CPU {
 	private: 
 		Memory ram_; 
 		RegisterFile regs;
 		uint32_t pc_ = 0x80000000; 
+		ALU alu_ ; 
+		static uint32_t execute(DecodedInstruction instruction, uint32_t current_pc);
+		static uint32_t execute_branch(DecodedInstruction instruction, uint32_t current_pc);
+
 		void clk();
 		static constexpr uint32_t MASK_3bit = 0x07; 
 		static constexpr uint32_t MASK_4bit = 0x0F;
@@ -93,12 +115,6 @@ class CPU {
 		void reset(); 
 };
 
-
-class ALU {
-	private: //addi,  
-
-	public:
-};
 
 
 

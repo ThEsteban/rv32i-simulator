@@ -82,13 +82,6 @@ void RegisterFile::write(std::size_t index, uint32_t value) {
 	registers_[index] = value; 
 }
 
-void CPU::clk(){
-	this->pc_ = this->pc_ + 4; 
-	uint32_t instruction = this->ram_.load_uw(pc_); 
-	DecodedInstruction decInstruction = decode(instruction);
-	(void)decInstruction; 
-}
-
 DecodedInstruction CPU::decode(uint32_t instruction){
 	DecodedInstruction decInstruction; 
 	decInstruction.opcode = instruction & 0x7F ; //isiolate bottom 7 bits
@@ -180,6 +173,85 @@ DecodedInstruction CPU::decode(uint32_t instruction){
 	}
 	return decInstruction ; 
 }
+
+uint32_t CPU::execute_branch(DecodedInstruction instruction, uint32_t current_pc){
+	uint32_t src1 = instruction.rs1; 
+	uint32_t src2 = instruction.rs2; 
+	bool takebr = false; 
+	switch(instruction.funct3){
+		case 0b000: takebr = (src1 == src2); break; //BEQ, zero flag 
+		case 0b001: takebr = (src1 != src2); break; //BNE, zero flag
+		case 0b100: takebr = ((int32_t)src1 < (int32_t)src2); break; // BLT, 
+        case 0b101: takebr = ((int32_t)src1 >= (int32_t)src2); break; // BGE
+        case 0b110: takebr = (src1 < src2); break;        // BLTU
+        case 0b111: takebr = (src1 >= src2); break;       // BGEU
+        default:
+            //handle illegal instruction exception here (for now, just assert or return pc+4)
+            assert(false && "Illegal funct3 for B-type instruction");
+            return current_pc + 4;
+    }
+	if(takebr){
+		return current_pc + (instruction.imm * 2); 
+	}else{
+		return current_pc + 4; 
+	}
+
+}
+
+uint32_t CPU::execute(DecodedInstruction instruction, uint32_t current_pc){
+
+}
+
+uint32_t ALU::compute(uint32_t a , uint32_t b, ALUop operation){
+	switch(operation){
+		case(ALUop::ADD):{
+			break; 
+		}
+		case(ALUop::SUB):{
+			break;
+		}
+		case(ALUop::AND):{
+			break;
+		}
+		case(ALUop::OR):{
+			break;
+		}
+		case(ALUop::XOR):{
+			break;
+		}
+		case(ALUop::SLL):{
+			break;
+		}
+		case(ALUop::SRL):{
+			break;
+		}
+		case(ALUop::SRA):{
+			break;
+		}
+		case(ALUop::SLT):{
+			break;
+		}
+		case(ALUop::SLTU):{
+			break;
+		}
+		default: /*illegal op*/ break; 
+	}
+}
+
+
+
+void CPU::clk(){
+	uint32_t instruction = ram_.load_uw(pc_); //fetch
+	DecodedInstruction decInstruction = decode(instruction);//decode
+	uint32_t current_pc =  pc_; //save current pc for JAL/JALR
+	if(decInstruction.type== InstructionType::B){
+		CPU::execute_branch(decInstruction, current_pc);
+	}else{
+		uint32_t next_pc = CPU::execute(decInstruction, current_pc); 
+		pc_ = next_pc; 
+	}
+}
+
 
 uint32_t CPU::read_pc(){
 	return pc_; 
