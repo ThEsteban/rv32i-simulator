@@ -181,60 +181,48 @@ uint32_t CPU::execute_branch(DecodedInstruction instruction, uint32_t current_pc
 	switch(instruction.funct3){
 		case 0b000: takebr = (src1 == src2); break; //BEQ, zero flag 
 		case 0b001: takebr = (src1 != src2); break; //BNE, zero flag
-		case 0b100: takebr = ((int32_t)src1 < (int32_t)src2); break; // BLT, 
+		case 0b100: takebr = ((int32_t)src1 < (int32_t)src2); break; // BLT, sign XOR overflow
         case 0b101: takebr = ((int32_t)src1 >= (int32_t)src2); break; // BGE
-        case 0b110: takebr = (src1 < src2); break;        // BLTU
-        case 0b111: takebr = (src1 >= src2); break;       // BGEU
+        case 0b110: takebr = (src1 < src2); break;        // BLTU , borrow flag from full adder
+        case 0b111: takebr = (src1 >= src2); break;       // BGEU 
         default:
             //handle illegal instruction exception here (for now, just assert or return pc+4)
             assert(false && "Illegal funct3 for B-type instruction");
             return current_pc + 4;
     }
 	if(takebr){
-		return current_pc + (instruction.imm * 2); 
+		return current_pc + (instruction.imm * 2); //left shifted immediate for larger range
 	}else{
 		return current_pc + 4; 
 	}
 
 }
-
-uint32_t CPU::execute(DecodedInstruction instruction, uint32_t current_pc){
+//determine aluop and call compute, 
+uint32_t CPU::execute_R(DecodedInstruction instruction, uint32_t current_pc){
 
 }
 
-uint32_t ALU::compute(uint32_t a , uint32_t b, ALUop operation){
-	switch(operation){
-		case(ALUop::ADD):{
-			break; 
-		}
-		case(ALUop::SUB):{
-			break;
-		}
-		case(ALUop::AND):{
-			break;
-		}
-		case(ALUop::OR):{
-			break;
-		}
-		case(ALUop::XOR):{
-			break;
-		}
-		case(ALUop::SLL):{
-			break;
-		}
-		case(ALUop::SRL):{
-			break;
-		}
-		case(ALUop::SRA):{
-			break;
-		}
-		case(ALUop::SLT):{
-			break;
-		}
-		case(ALUop::SLTU):{
-			break;
-		}
-		default: /*illegal op*/ break; 
+uint32_t CPU::execute_I(DecodedInstruction instruction, uint32_t current_pc ){
+
+}
+
+
+
+
+
+uint32_t IntegerALU::compute(uint32_t a , uint32_t b, ALUop operation) const {
+	switch(operation){	
+	    case ALUop::ADD: return a + b;
+        case ALUop::SUB: return a - b;
+        case ALUop::AND: return a & b;
+        case ALUop::OR:  return a | b;
+        case ALUop::XOR: return a ^ b;
+        case ALUop::SLL: return a << (b & 0x1F);
+		case(ALUop::SRL):return a >> (b &0x1F) ;
+		case(ALUop::SRA):return static_cast<uint32_t>(static_cast<int32_t>(a) >> (b &0x1F));
+		case(ALUop::SLT):return (static_cast<int32_t>(a) < static_cast<int32_t>(b)) ? 1 : 0; 
+		case(ALUop::SLTU): return (a< b) ? 1 : 0; 
+		default: /*illegal op, figure out what to do */ break; 
 	}
 }
 
@@ -244,15 +232,38 @@ void CPU::clk(){
 	uint32_t instruction = ram_.load_uw(pc_); //fetch
 	DecodedInstruction decInstruction = decode(instruction);//decode
 	uint32_t current_pc =  pc_; //save current pc for JAL/JALR
+	uint32_t next_pc = 0; 
 	if(decInstruction.type== InstructionType::B){
-		CPU::execute_branch(decInstruction, current_pc);
+		next_pc = CPU::execute_branch(decInstruction, current_pc);
 	}else{
-		uint32_t next_pc = CPU::execute(decInstruction, current_pc); 
-		pc_ = next_pc; 
+		switch(decInstruction.type){
+			case InstructionType::R : {
+				next_pc = execute_R(decInstruction, current_pc);
+			break; 
+			}
+			case InstructionType::I :{
+				next_pc = execute_I(decInstruction, current_pc);
+			break;
+			}
+			case InstructionType::S : {
+				next_pc = execute_S(decInstruction, current_pc);
+				break;
+			}
+			case InstructionType::U :{
+				next_pc = execute_U(decInstruction, current_pc);
+				break; 
+			}
+			case InstructionType::J : {
+				next_pc = execute_J(decInstruction, current_pc);
+				break; 
+			}
+			default: /*illegal opcode*/ break; 
+		}
 	}
+	pc_ = next_pc; 
 }
 
 
-uint32_t CPU::read_pc(){
+uint32_t CPU::read_pc() const{
 	return pc_; 
 }

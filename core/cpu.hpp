@@ -85,9 +85,17 @@ enum class ALUop{
 	SLTU
 }; 
 
+//abstract base class, future proofing for extensions
 class ALU {
 	public://compute
-	static uint32_t compute(uint32_t a , uint32_t b, ALUop operation); //static to test easier, 
+	virtual ~ALU() = default; 
+	virtual uint32_t compute(uint32_t a , uint32_t b, ALUop operation) const = 0; //made virtual so that I can add more extensions later 
+	
+};
+
+class IntegerALU : public ALU {
+	public:
+		uint32_t compute(uint32_t a, uint32_t b, ALUop operation) const override; 
 };
 
 
@@ -96,12 +104,27 @@ class CPU {
 		Memory ram_; 
 		RegisterFile regs;
 		uint32_t pc_ = 0x80000000; 
-		ALU alu_ ; 
-		static uint32_t execute(DecodedInstruction instruction, uint32_t current_pc);
-		static uint32_t execute_branch(DecodedInstruction instruction, uint32_t current_pc);
+		IntegerALU alu_ ; 
+		using ExecHandler = uint32_t (CPU::*)(const DecodedInstruction&, uint32_t); 
+		std::array<ExecHandler, 128> dispatch_table_; //create dispatch table for modularity, for any possible future opcodes
+
+
+
+		uint32_t execute_R(DecodedInstruction instruction, uint32_t current_pc);
+		uint32_t execute_I(DecodedInstruction instruction, uint32_t current_pc);
+		uint32_t execute_S(DecodedInstruction instruction, uint32_t current_pc);
+		uint32_t execute_branch(DecodedInstruction instruction, uint32_t current_pc);
+		uint32_t execute_U(DecodedInstruction instruction, uint32_t current_pc);
+		uint32_t execute_J(DecodedInstruction instruction, uint32_t current_pc);
+
+
+
+
+
 
 		void clk();
-		static constexpr uint32_t MASK_3bit = 0x07; 
+		//bitmasks
+		static constexpr uint32_t MASK_3bit = 0x07; //saves memory in case multiple CPUs 
 		static constexpr uint32_t MASK_4bit = 0x0F;
 		static constexpr uint32_t MASK_5bit = 0x1F;
 		static constexpr uint32_t MASK_6bit = 0x3F; 
@@ -111,7 +134,7 @@ class CPU {
 		static constexpr uint32_t MASK_12bit = 0x0FFF;
 	public: 
 		DecodedInstruction decode(uint32_t instruction);
-		uint32_t read_pc();
+		uint32_t read_pc() const;
 		void reset(); 
 };
 
