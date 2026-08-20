@@ -61,18 +61,17 @@ enum class InstructionType{
 	UNKNOWN
 }; 
 
-typedef struct DecodedInstruction {
-	int32_t imm; //immediate value, 
+struct DecodedInstruction {
+	int32_t imm = 0; //immediate value, 
 	uint8_t opcode = 0; 
-	uint8_t rd; //destination register
-	uint8_t funct3; //sub oberatio identifier 3 bit
-	uint8_t rs1; //first source register
-	uint8_t rs2; //second source register
-	uint8_t funct7; //7 bit sub operation identifier
+	uint8_t rd = 0; //destination register
+	uint8_t funct3 = 0; //sub oberatio identifier 3 bit
+	uint8_t rs1= 0; //first source register
+	uint8_t rs2 = 0; //second source register
+	uint8_t funct7 = 0; //7 bit sub operation identifier
 	InstructionType type = InstructionType::UNKNOWN; 
-}DecodedInstruction;
+};
 
-typedef static constexpr uint8_t mask; 
 
 class CPU {
 	private: 
@@ -80,17 +79,15 @@ class CPU {
 		RegisterFile regs;
 		uint32_t pc_ = 0x80000000; 
 		void clk();
-		enum class InstructionType; 
-		DecodedInstruction; 
 		DecodedInstruction decode(uint32_t instruction);
-		mask MASK_3bit = 0x07; 
-		mask MASK_4bit = 0x0F
-		mask MASK_5bit = 0x1F;
-		mask MASK_6bit = 0x3F; 
-		mask MASK_7bit = 0x7F; 
-		mask MASK_8bit = 0xFF;
-		static constexpr uint16_t MASK_10bit = 0x03FF;
-		static constexpr uint16_t MASK_12bit = 0x0FFF;
+		static constexpr uint32_t MASK_3bit = 0x07; 
+		static constexpr uint32_t MASK_4bit = 0x0F;
+		static constexpr uint32_t MASK_5bit = 0x1F;
+		static constexpr uint32_t MASK_6bit = 0x3F; 
+		static constexpr uint32_t MASK_7bit = 0x7F; 
+		static constexpr uint32_t MASK_8bit = 0xFF;
+		static constexpr uint32_t MASK_10bit = 0x03FF;
+		static constexpr uint32_t MASK_12bit = 0x0FFF;
 	public: 
 		uint32_t read_pc();
 		void reset(); 

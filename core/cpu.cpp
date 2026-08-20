@@ -83,8 +83,8 @@ void RegisterFile::write(std::size_t index, uint32_t value) {
 }
 
 void CPU::clk(){
-	this.pc_ = this.pc_ + 4; 
-	uint32_t instruction = memory_.load_uw(pc_); 
+	this->pc_ = this->pc_ + 4; 
+	uint32_t instruction = this->ram_.load_uw(pc_); 
 	DecodedInstruction decInstruction = decode(instruction);
 }
 
@@ -127,16 +127,16 @@ DecodedInstruction CPU::decode(uint32_t instruction){
 		decInstruction.funct7 = (instruction >>25) & MASK_7bit; 
 		break; 
 	case InstructionType::I : 
-		decInstruction.imm = (instruction >>25) & MASK_12bit; 
+		int16_t raw_imm = (((instruction >>20) & MASK_12bit) << 4) >> 4;
+		decInstruction.imm = static_cast<int32_t>(((instruction >>20) & MASK_12bit) <<20) >> 20;
 		decInstruction.rd = (instruction >> 7) & MASK_5bit;
 		decInstruction.funct3 = (instruction >> 12 ) & MASK_3bit; 
 		decInstruction.rs1 = (instruction >>15) & MASK_5bit; 
-		decInstruction.rs2 = (instruction >>20) & MASK_5bit; 
 		break; 
 	case InstructionType::S : 
-		decInstruction.imm = (instruction >> 7 ) & MASK_5bit;//process to get 12 bit immediate 
-		uint16_t imms2 = (instruction >> 20) & MASK_12bit; //immediate s-type part 2
-		decInstruction.imm = decInstruction.imm | imm2; //
+		uint32_t raw_imms = ((instruction >> 7 ) & MASK_5bit )|//process to get 12 bit immediate 
+							(((instruction >> 25 ) & MASK_7bit) << 5);
+		decInstruction.imm = static_cast<int32_t>(raw_imms << 20) >>20; 
 		decInstruction.funct3 = (instruction >> 12) & MASK_3bit; 
 		decInstruction.rs1 = (instruction >> 15) & MASK_5bit; 
 		decInstruction.rs2 = (instruction >>20) & MASK_5bit; 
@@ -169,7 +169,7 @@ DecodedInstruction CPU::decode(uint32_t instruction){
 							( instruction  & 0x000FF000); // imm[19:12]
 		decInstruction.imm = static_cast<int32_t>(raw_immj << 11) >> 11; 
 		break;
-	default InstructionType::UNKNOWN :
+	default:
 		//handle illegal instruction in execution phase, 
 	}
 	return decInstruction ; 
