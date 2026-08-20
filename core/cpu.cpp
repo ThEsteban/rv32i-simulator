@@ -86,6 +86,7 @@ void CPU::clk(){
 	this->pc_ = this->pc_ + 4; 
 	uint32_t instruction = this->ram_.load_uw(pc_); 
 	DecodedInstruction decInstruction = decode(instruction);
+	(void)decInstruction; 
 }
 
 DecodedInstruction CPU::decode(uint32_t instruction){
@@ -119,21 +120,22 @@ DecodedInstruction CPU::decode(uint32_t instruction){
 		decInstruction.type = InstructionType::UNKNOWN; 
 	}
 	switch(decInstruction.type){ // fetch necessary bits for each op
-	case InstructionType::R :
+	case InstructionType::R :{
 		decInstruction.rd = (instruction>>7) & MASK_5bit ; 
 		decInstruction.funct3 = (instruction >>12) & MASK_3bit; 
 		decInstruction.rs1 = (instruction >>15) & MASK_5bit ; 
 		decInstruction.rs2 = (instruction >> 20 ) & MASK_5bit;
 		decInstruction.funct7 = (instruction >>25) & MASK_7bit; 
 		break; 
-	case InstructionType::I : 
-		int16_t raw_imm = (((instruction >>20) & MASK_12bit) << 4) >> 4;
+	}
+	case InstructionType::I : {
 		decInstruction.imm = static_cast<int32_t>(((instruction >>20) & MASK_12bit) <<20) >> 20;
 		decInstruction.rd = (instruction >> 7) & MASK_5bit;
 		decInstruction.funct3 = (instruction >> 12 ) & MASK_3bit; 
 		decInstruction.rs1 = (instruction >>15) & MASK_5bit; 
 		break; 
-	case InstructionType::S : 
+	}
+	case InstructionType::S : {
 		uint32_t raw_imms = ((instruction >> 7 ) & MASK_5bit )|//process to get 12 bit immediate 
 							(((instruction >> 25 ) & MASK_7bit) << 5);
 		decInstruction.imm = static_cast<int32_t>(raw_imms << 20) >>20; 
@@ -141,7 +143,8 @@ DecodedInstruction CPU::decode(uint32_t instruction){
 		decInstruction.rs1 = (instruction >> 15) & MASK_5bit; 
 		decInstruction.rs2 = (instruction >>20) & MASK_5bit; 
 		break; 
-	case InstructionType::B :
+	}
+	case InstructionType::B :{
 		/*decInstruction.imm = (instruction <<4 ) & 0x800 ; //isolate instr[7] and put it in imm[11]
 		uint8_t immb2 = (instruction >> 7) & 0x1E ; //isolate lowest 4 bits for imm b type
 		uint16_t immb3 = (instruction >>20) & 0x07E0; //isolate imm[10:5] 
@@ -152,16 +155,18 @@ DecodedInstruction CPU::decode(uint32_t instruction){
                        ((instruction << 4)  & 0x0800) | // imm[11]
                        ((instruction >> 20) & 0x07E0) | // imm[10:5]
                        ((instruction >> 7)  & 0x001E);  // imm[4:1]
-        decInstruction.imm = static_cast<int32_t>((raw_imm <<19)>>19); 
+        decInstruction.imm = static_cast<int32_t>(raw_imm <<19)>>19; 
 		decInstruction.funct3 = (instruction >> 12) & MASK_3bit; 
 		decInstruction.rs1 = (instruction >> 15) & MASK_5bit; 
 		decInstruction.rs2 = (instruction >> 20) & MASK_5bit; 
 		break; 
-	case InstructionType::U :
+	}
+	case InstructionType::U :{
 		decInstruction.rd = (instruction >> 7) & MASK_5bit; 
 		decInstruction.imm = static_cast<int32_t>(instruction & 0xFFFFF000); 
 		break;
-	case InstructionType::J :
+	}
+	case InstructionType::J : {
 		decInstruction.rd = (instruction >> 7) & MASK_5bit; 
 		uint32_t raw_immj= ((instruction >>20) & 0x07FE) | //imm[10:1]
 							((instruction>>11) & 0x100000) | //imm[20]
@@ -169,8 +174,9 @@ DecodedInstruction CPU::decode(uint32_t instruction){
 							( instruction  & 0x000FF000); // imm[19:12]
 		decInstruction.imm = static_cast<int32_t>(raw_immj << 11) >> 11; 
 		break;
+	}
 	default:
-		//handle illegal instruction in execution phase, 
+		break;  //type is unknown, handle illegal instruction in execution phase
 	}
 	return decInstruction ; 
 }

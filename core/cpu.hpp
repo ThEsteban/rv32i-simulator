@@ -79,7 +79,6 @@ class CPU {
 		RegisterFile regs;
 		uint32_t pc_ = 0x80000000; 
 		void clk();
-		DecodedInstruction decode(uint32_t instruction);
 		static constexpr uint32_t MASK_3bit = 0x07; 
 		static constexpr uint32_t MASK_4bit = 0x0F;
 		static constexpr uint32_t MASK_5bit = 0x1F;
@@ -89,6 +88,7 @@ class CPU {
 		static constexpr uint32_t MASK_10bit = 0x03FF;
 		static constexpr uint32_t MASK_12bit = 0x0FFF;
 	public: 
+		DecodedInstruction decode(uint32_t instruction);
 		uint32_t read_pc();
 		void reset(); 
 };
