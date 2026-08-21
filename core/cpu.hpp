@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <cstddef>
 #include <vector>
+#include "extensionsALUs.hpp"
+
 
 class Memory { 
 	private: 
@@ -41,7 +43,7 @@ class Memory {
 
 class RegisterFile {
 	private:
-		std::array<uint32_t, 32> registers_= {0};  // unchanging, reduce 
+		std::array<uint32_t, 32> registers_= {0};  // array because its unchanging, reduce 
 							   // heap overhead
 	public:
 		uint32_t read(std::size_t index) const;
@@ -88,35 +90,45 @@ enum class ALUop{
 //abstract base class, future proofing for extensions
 class ALU {
 	public://compute
-	virtual ~ALU() = default; 
-	virtual uint32_t compute(uint32_t a , uint32_t b, ALUop operation) const = 0; //made virtual so that I can add more extensions later 
-	
+		virtual ~ALU() = default; 
+		virtual uint32_t compute(uint32_t a , uint32_t b, ALUop operation) const = 0; //made virtual so that I can add more extensions later 
 };
 
+//extension declarations all go here 
 class IntegerALU : public ALU {
 	public:
 		uint32_t compute(uint32_t a, uint32_t b, ALUop operation) const override; 
 };
 
 
+
+
+
+//end of extension declarations
+
+
+template <typename ALUType = IntegerALU> //CPU is now a template for any ALU you implement in extensionALU.hpp
+
 class CPU {
-	private: 
+	private:
 		Memory ram_; 
-		RegisterFile regs;
-		uint32_t pc_ = 0x80000000; 
-		IntegerALU alu_ ; 
-		using ExecHandler = uint32_t (CPU::*)(const DecodedInstruction&, uint32_t); 
+		RegisterFile regs_;
+		uint32_t pc_ = 0x80000000;
+		ALUType alu_;  
+
+		using ExecHandler = uint32_t (CPU<ALUType>::*)(const DecodedInstruction&, uint32_t); 
 		std::array<ExecHandler, 128> dispatch_table_; //create dispatch table for modularity, for any possible future opcodes
 
 
 
-		uint32_t execute_R(DecodedInstruction instruction, uint32_t current_pc);
-		uint32_t execute_I(DecodedInstruction instruction, uint32_t current_pc);
-		uint32_t execute_S(DecodedInstruction instruction, uint32_t current_pc);
-		uint32_t execute_branch(DecodedInstruction instruction, uint32_t current_pc);
-		uint32_t execute_U(DecodedInstruction instruction, uint32_t current_pc);
-		uint32_t execute_J(DecodedInstruction instruction, uint32_t current_pc);
-
+		//execution handlers, 
+		uint32_t execute_R(const DecodedInstruction& instruction, uint32_t current_pc);
+		uint32_t execute_I(const DecodedInstruction& instruction, uint32_t current_pc);
+		uint32_t execute_S(const DecodedInstruction& instruction, uint32_t current_pc);
+		uint32_t execute_branch(const DecodedInstruction& instruction, uint32_t current_pc);
+		uint32_t execute_U(const DecodedInstruction& instruction, uint32_t current_pc);
+		uint32_t execute_J(const DecodedInstruction& instruction, uint32_t current_pc);
+		uint32_t execute_JALR(const DecodedInstruction& instruction, uint32_t current_pc);
 
 
 
@@ -132,14 +144,226 @@ class CPU {
 		static constexpr uint32_t MASK_8bit = 0xFF;
 		static constexpr uint32_t MASK_10bit = 0x03FF;
 		static constexpr uint32_t MASK_12bit = 0x0FFF;
+
+
 	public: 
 		DecodedInstruction decode(uint32_t instruction);
 		uint32_t read_pc() const;
-		void reset(); 
+		uint32_t execute(); 
+		void reset(){pc_ = x80000000; regs_ = RegisterFile(); }; 
+		CPU(); //constructor populates dispatch table
 };
 
+//implementations for templated CPU class —----—------------------------
+
+template <typename ALUType> //decodes the instruction 
+DecodedInstruction CPU<ALUType>::decode(uint32_t instruction){
+	DecodedInstruction decInstruction; 
+	decInstruction.opcode = instruction & 0x7F ; //isiolate bottom 7 bits
+	switch(decInstruction.opcode){// switch to fetch type of instruction 
+	case 0x33: 
+		decInstruction.type = InstructionType::R ; 
+		break; 
+	case 0x13:
+	case 0x03:
+	case 0x67:
+	case 0x73:
+	case 0x0F:
+		decInstruction.type = InstructionType::I ; 
+		break; 
+	case 0x23:
+		decInstruction.type = InstructionType::S ; 
+		break;
+	case 0x63:
+		decInstruction.type = InstructionType::B; 
+		break;
+	case 0x37:
+	case 0x17:
+		decInstruction.type = InstructionType::U ; 
+		break; 
+	case 0x6F:
+		decInstruction.type = InstructionType::J ;
+		break;
+	default:
+		decInstruction.type = InstructionType::UNKNOWN; 
+	}
+	switch(decInstruction.type){ // fetch necessary bits for each op
+	case InstructionType::R :{
+		decInstruction.rd = (instruction>>7) & MASK_5bit ; 
+		decInstruction.funct3 = (instruction >>12) & MASK_3bit; 
+		decInstruction.rs1 = (instruction >>15) & MASK_5bit ; 
+		decInstruction.rs2 = (instruction >> 20 ) & MASK_5bit;
+		decInstruction.funct7 = (instruction >>25) & MASK_7bit; 
+		break; 
+	}
+	case InstructionType::I : {
+		decInstruction.imm = static_cast<int32_t>(((instruction >>20) & MASK_12bit) <<20) >> 20;
+		decInstruction.rd = (instruction >> 7) & MASK_5bit;
+		decInstruction.funct3 = (instruction >> 12 ) & MASK_3bit; 
+		decInstruction.rs1 = (instruction >>15) & MASK_5bit; 
+		break; 
+	}
+	case InstructionType::S : {
+		uint32_t raw_imms = ((instruction >> 7 ) & MASK_5bit )|//process to get 12 bit immediate 
+							(((instruction >> 25 ) & MASK_7bit) << 5);
+		decInstruction.imm = static_cast<int32_t>(raw_imms << 20) >>20; 
+		decInstruction.funct3 = (instruction >> 12) & MASK_3bit; 
+		decInstruction.rs1 = (instruction >> 15) & MASK_5bit; 
+		decInstruction.rs2 = (instruction >>20) & MASK_5bit; 
+		break; 
+	}
+	case InstructionType::B :{
+		/*decInstruction.imm = (instruction <<4 ) & 0x800 ; //isolate instr[7] and put it in imm[11]
+		uint8_t immb2 = (instruction >> 7) & 0x1E ; //isolate lowest 4 bits for imm b type
+		uint16_t immb3 = (instruction >>20) & 0x07E0; //isolate imm[10:5] 
+		uint16_t immb4 = (instruction >>19) & 0x1000; //isolate imm[12]		sign extend
+		decInstruction.imm = ((decInstruction.imm | immb2 | immb3 | immb4) <<19) >>19; //combine into 12bitimm
+		*/
+		uint32_t raw_imm = ((instruction >> 19) & 0x1000) | // imm[12]
+                       ((instruction << 4)  & 0x0800) | // imm[11]
+                       ((instruction >> 20) & 0x07E0) | // imm[10:5]
+                       ((instruction >> 7)  & 0x001E);  // imm[4:1]
+        decInstruction.imm = static_cast<int32_t>(raw_imm <<19)>>19; 
+		decInstruction.funct3 = (instruction >> 12) & MASK_3bit; 
+		decInstruction.rs1 = (instruction >> 15) & MASK_5bit; 
+		decInstruction.rs2 = (instruction >> 20) & MASK_5bit; 
+		break; 
+	}
+	case InstructionType::U :{
+		decInstruction.rd = (instruction >> 7) & MASK_5bit; 
+		decInstruction.imm = static_cast<int32_t>(instruction & 0xFFFFF000); 
+		break;
+	}
+	case InstructionType::J : {
+		decInstruction.rd = (instruction >> 7) & MASK_5bit; 
+		uint32_t raw_immj= ((instruction >>20) & 0x07FE) | //imm[10:1]
+							((instruction>>11) & 0x100000) | //imm[20]
+							((instruction >>9 ) & 0x800) | // imm[11]
+							( instruction  & 0x000FF000); // imm[19:12]
+		decInstruction.imm = static_cast<int32_t>(raw_immj << 11) >> 11; 
+		break;
+	}
+	default:
+		break;  //type is unknown, handle illegal instruction in execution phase
+	}
+	return decInstruction ; 
+}
 
 
+
+
+template <typename ALUType>
+uint32_t CPU<ALUType>::execute_branch(const DecodedInstruction& instruction, uint32_t current_pc){
+	uint32_t src1 = instruction.rs1; 
+	uint32_t src2 = instruction.rs2; 
+	bool takebr = false; 
+	switch(instruction.funct3){
+		case 0b000: takebr = (src1 == src2); break; //BEQ, zero flag 
+		case 0b001: takebr = (src1 != src2); break; //BNE, zero flag
+		case 0b100: takebr = ((int32_t)src1 < (int32_t)src2); break; // BLT, sign XOR overflow
+        case 0b101: takebr = ((int32_t)src1 >= (int32_t)src2); break; // BGE
+        case 0b110: takebr = (src1 < src2); break;        // BLTU , borrow flag from full adder
+        case 0b111: takebr = (src1 >= src2); break;       // BGEU 
+        default:
+            //handle illegal instruction exception here (for now, just assert or return pc+4)
+            assert(false && "Illegal funct3 for B-type instruction");
+            return current_pc + 4;
+    }
+	if(takebr){
+		return current_pc + (instruction.imm * 2); //left shifted immediate for larger range
+	}else{
+		return current_pc + 4; 
+	}
+
+}
+
+//these all determine aluop and call compute, 
+template <typename ALUType> 
+uint32_t CPU<ALUType>::execute_R(const DecodedInstruction& instruction, uint32_t current_pc){
+	switch(instruction.funct3){
+		case 0b000 : switch(instruction.funct7){
+			case 0x20 : return alu_.compute(regs_.read(instruction.rs1), regs_.read(instruction.rs2), ALUop::SUB);
+			case 0x00: return alu_.compute(regs_.read(instruction.rs1), regs_.read(instruction.rs2), ALUop::ADD);
+			default: throw std::runtime_error("unkown ALU instruction, funct7 not valid for funct3=0"); 
+		}
+		case 0b001: return alu_.compute(regs_.read(instruction.rs1), regs_.read(instruction.rs2), ALUop::SLL);
+		case 0b010:return alu_.compute(regs_.read(instruction.rs1), regs_.read(instruction.rs2), ALUop::SLT);
+		case 0b011: return alu_.compute(regs_.read(instruction.rs1), regs_.read(instruction.rs2), ALUop::SLTU);
+		case 0b100:return alu_.compute(regs_.read(instruction.rs1), regs_.read(instruction.rs2), ALUop::XOR);
+		case 0b101: switch(instruction.funct7){
+			case 0x20 : return alu_.compute(regs_.read(instruction.rs1), regs_.read(instruction.rs2), ALUop::SRA);
+			case 0x00: return  alu_.compute(regs_.read(instruction.rs1), regs_.read(instruction.rs2), ALUop::SRL);
+			default: throw std::runtime_error("unknown ALU instruction, funct7 not valid for funct3 = 5")
+		}
+		case 0b110: return alu_.compute(regs_.read(instruction.rs1), regs_.read(instruction.rs2), ALUop::OR);
+		case 0b111: return alu_.compute(regs_.read(instruction.rs1), regs_.read(instruction.rs2), ALUop::AND);
+		default: throw std::runtime_error("unknown ALU operation"); 
+	}
+}
+
+template <typename ALUType> //finish this, make sure I'm returning what I need to be returning!!
+uint32_t CPU<ALUType>::execute_I(const DecodedInstruction& instruction, uint32_t current_pc ){
+	switch(instruction.opcode){
+		case(0x13): switch(instruction.funct3){
+					case 0b000 : return alu_.compute(regs_.read(instruction.rs1), instruction.imm, ALUop::ADD);
+					case 0b001: return alu_.compute(regs_.read(instruction.funct3), instruction.imm, ALUop::SLL); 
+					case 0b010: return alu_.compute(regs_.read(instruction.funct3), instruction.imm, ALUop::SLT); 
+					case 0b011:return alu_.compute(regs_.read(instruction.funct3), instruction.imm, ALUop::SLTU); 
+					case 0b100:return alu_.compute(regs_.read(instruction.funct3), instruction.imm, ALUop::XOR); 
+					case 0b101: if(instruction.funct7 & x20){//funct7 bit 5 distinguishes right shift logical vs right shift arithmetic
+						return alu_.compute(regs_.read(instruction.funct3), instruction.imm, ALUop::SRA); 
+					}else return alu_.compute(regs_.read(instruction.funct3), instruction.imm, ALUop::SRL); 
+					case 0b110:return alu_.compute(regs_.read(instruction.funct3), instruction.imm, ALUop::OR); 
+					case 0b111:return alu_.compute(regs_.read(instruction.funct3), instruction.imm, ALUop::AND);
+					default: throw std::runtime_error("unkown ALU operation(failed ALU imm)") ; 
+				}
+		case 0x03 : 
+		
+	}
+}
+
+
+
+template <typename ALUType>	//clock, fetch/decode/execute cycle contained here
+void CPU<ALUType>::clk(){
+	uint32_t instruction = ram_.load_uw(pc_); //fetch
+	DecodedInstruction decInstruction = decode(instruction);//decode
+	uint32_t current_pc =  pc_; //save current pc for JAL/JALR
+	uint32_t next_pc = 0; 
+	if(decInstruction.type== InstructionType::B){
+		next_pc = CPU<ALUType>::execute_branch(decInstruction, current_pc);
+	}else{								//!!!!!!!!!!!!!!!!!!
+		switch(decInstruction.type){ //write the actual instructions for each handler, not every output is a change in pc
+			case InstructionType::R : {
+				next_pc = execute_R(decInstruction, current_pc);
+			break; 
+			}
+			case InstructionType::I :{
+				next_pc = execute_I(decInstruction, current_pc);
+			break;
+			}
+			case InstructionType::S : {
+				next_pc = execute_S(decInstruction, current_pc);
+				break;
+			}
+			case InstructionType::U :{
+				next_pc = execute_U(decInstruction, current_pc);
+				break; 
+			}
+			case InstructionType::J : {
+				next_pc = execute_J(decInstruction, current_pc);
+				break; 
+			}
+			default: /*illegal opcode*/ break; 
+		}
+	}
+	pc_ = next_pc; 
+}
+
+template <typename ALUType> //read pc
+uint32_t CPU<ALUType>::read_pc() const{
+	return pc_; 
+}
 
 
 #endif // CPU_HPP

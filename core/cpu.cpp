@@ -1,4 +1,5 @@
 #include "cpu.hpp"
+#include <stdexcept>
 
 std::size_t Memory::translate_address(uint32_t raddress) const {
 	assert(raddress >= BASE_OFFSET && "real address too low") ; 
@@ -82,132 +83,6 @@ void RegisterFile::write(std::size_t index, uint32_t value) {
 	registers_[index] = value; 
 }
 
-DecodedInstruction CPU::decode(uint32_t instruction){
-	DecodedInstruction decInstruction; 
-	decInstruction.opcode = instruction & 0x7F ; //isiolate bottom 7 bits
-	switch(decInstruction.opcode){// switch to fetch type of instruction 
-	case 0x33: 
-		decInstruction.type = InstructionType::R ; 
-		break; 
-	case 0x13:
-	case 0x03:
-	case 0x67:
-	case 0x73:
-	case 0x0F:
-		decInstruction.type = InstructionType::I ; 
-		break; 
-	case 0x23:
-		decInstruction.type = InstructionType::S ; 
-		break;
-	case 0x63:
-		decInstruction.type = InstructionType::B; 
-		break;
-	case 0x37:
-	case 0x17:
-		decInstruction.type = InstructionType::U ; 
-		break; 
-	case 0x6F:
-		decInstruction.type = InstructionType::J ;
-		break;
-	default:
-		decInstruction.type = InstructionType::UNKNOWN; 
-	}
-	switch(decInstruction.type){ // fetch necessary bits for each op
-	case InstructionType::R :{
-		decInstruction.rd = (instruction>>7) & MASK_5bit ; 
-		decInstruction.funct3 = (instruction >>12) & MASK_3bit; 
-		decInstruction.rs1 = (instruction >>15) & MASK_5bit ; 
-		decInstruction.rs2 = (instruction >> 20 ) & MASK_5bit;
-		decInstruction.funct7 = (instruction >>25) & MASK_7bit; 
-		break; 
-	}
-	case InstructionType::I : {
-		decInstruction.imm = static_cast<int32_t>(((instruction >>20) & MASK_12bit) <<20) >> 20;
-		decInstruction.rd = (instruction >> 7) & MASK_5bit;
-		decInstruction.funct3 = (instruction >> 12 ) & MASK_3bit; 
-		decInstruction.rs1 = (instruction >>15) & MASK_5bit; 
-		break; 
-	}
-	case InstructionType::S : {
-		uint32_t raw_imms = ((instruction >> 7 ) & MASK_5bit )|//process to get 12 bit immediate 
-							(((instruction >> 25 ) & MASK_7bit) << 5);
-		decInstruction.imm = static_cast<int32_t>(raw_imms << 20) >>20; 
-		decInstruction.funct3 = (instruction >> 12) & MASK_3bit; 
-		decInstruction.rs1 = (instruction >> 15) & MASK_5bit; 
-		decInstruction.rs2 = (instruction >>20) & MASK_5bit; 
-		break; 
-	}
-	case InstructionType::B :{
-		/*decInstruction.imm = (instruction <<4 ) & 0x800 ; //isolate instr[7] and put it in imm[11]
-		uint8_t immb2 = (instruction >> 7) & 0x1E ; //isolate lowest 4 bits for imm b type
-		uint16_t immb3 = (instruction >>20) & 0x07E0; //isolate imm[10:5] 
-		uint16_t immb4 = (instruction >>19) & 0x1000; //isolate imm[12]		sign extend
-		decInstruction.imm = ((decInstruction.imm | immb2 | immb3 | immb4) <<19) >>19; //combine into 12bitimm
-		*/
-		uint32_t raw_imm = ((instruction >> 19) & 0x1000) | // imm[12]
-                       ((instruction << 4)  & 0x0800) | // imm[11]
-                       ((instruction >> 20) & 0x07E0) | // imm[10:5]
-                       ((instruction >> 7)  & 0x001E);  // imm[4:1]
-        decInstruction.imm = static_cast<int32_t>(raw_imm <<19)>>19; 
-		decInstruction.funct3 = (instruction >> 12) & MASK_3bit; 
-		decInstruction.rs1 = (instruction >> 15) & MASK_5bit; 
-		decInstruction.rs2 = (instruction >> 20) & MASK_5bit; 
-		break; 
-	}
-	case InstructionType::U :{
-		decInstruction.rd = (instruction >> 7) & MASK_5bit; 
-		decInstruction.imm = static_cast<int32_t>(instruction & 0xFFFFF000); 
-		break;
-	}
-	case InstructionType::J : {
-		decInstruction.rd = (instruction >> 7) & MASK_5bit; 
-		uint32_t raw_immj= ((instruction >>20) & 0x07FE) | //imm[10:1]
-							((instruction>>11) & 0x100000) | //imm[20]
-							((instruction >>9 ) & 0x800) | // imm[11]
-							( instruction  & 0x000FF000); // imm[19:12]
-		decInstruction.imm = static_cast<int32_t>(raw_immj << 11) >> 11; 
-		break;
-	}
-	default:
-		break;  //type is unknown, handle illegal instruction in execution phase
-	}
-	return decInstruction ; 
-}
-
-uint32_t CPU::execute_branch(DecodedInstruction instruction, uint32_t current_pc){
-	uint32_t src1 = instruction.rs1; 
-	uint32_t src2 = instruction.rs2; 
-	bool takebr = false; 
-	switch(instruction.funct3){
-		case 0b000: takebr = (src1 == src2); break; //BEQ, zero flag 
-		case 0b001: takebr = (src1 != src2); break; //BNE, zero flag
-		case 0b100: takebr = ((int32_t)src1 < (int32_t)src2); break; // BLT, sign XOR overflow
-        case 0b101: takebr = ((int32_t)src1 >= (int32_t)src2); break; // BGE
-        case 0b110: takebr = (src1 < src2); break;        // BLTU , borrow flag from full adder
-        case 0b111: takebr = (src1 >= src2); break;       // BGEU 
-        default:
-            //handle illegal instruction exception here (for now, just assert or return pc+4)
-            assert(false && "Illegal funct3 for B-type instruction");
-            return current_pc + 4;
-    }
-	if(takebr){
-		return current_pc + (instruction.imm * 2); //left shifted immediate for larger range
-	}else{
-		return current_pc + 4; 
-	}
-
-}
-//determine aluop and call compute, 
-uint32_t CPU::execute_R(DecodedInstruction instruction, uint32_t current_pc){
-
-}
-
-uint32_t CPU::execute_I(DecodedInstruction instruction, uint32_t current_pc ){
-
-}
-
-
-
 
 
 uint32_t IntegerALU::compute(uint32_t a , uint32_t b, ALUop operation) const {
@@ -222,48 +97,7 @@ uint32_t IntegerALU::compute(uint32_t a , uint32_t b, ALUop operation) const {
 		case(ALUop::SRA):return static_cast<uint32_t>(static_cast<int32_t>(a) >> (b &0x1F));
 		case(ALUop::SLT):return (static_cast<int32_t>(a) < static_cast<int32_t>(b)) ? 1 : 0; 
 		case(ALUop::SLTU): return (a< b) ? 1 : 0; 
-		default: /*illegal op, figure out what to do */ break; 
+		default: throw std::runtime_error("unkown ALU operation") ;
 	}
 }
 
-
-
-void CPU::clk(){
-	uint32_t instruction = ram_.load_uw(pc_); //fetch
-	DecodedInstruction decInstruction = decode(instruction);//decode
-	uint32_t current_pc =  pc_; //save current pc for JAL/JALR
-	uint32_t next_pc = 0; 
-	if(decInstruction.type== InstructionType::B){
-		next_pc = CPU::execute_branch(decInstruction, current_pc);
-	}else{
-		switch(decInstruction.type){
-			case InstructionType::R : {
-				next_pc = execute_R(decInstruction, current_pc);
-			break; 
-			}
-			case InstructionType::I :{
-				next_pc = execute_I(decInstruction, current_pc);
-			break;
-			}
-			case InstructionType::S : {
-				next_pc = execute_S(decInstruction, current_pc);
-				break;
-			}
-			case InstructionType::U :{
-				next_pc = execute_U(decInstruction, current_pc);
-				break; 
-			}
-			case InstructionType::J : {
-				next_pc = execute_J(decInstruction, current_pc);
-				break; 
-			}
-			default: /*illegal opcode*/ break; 
-		}
-	}
-	pc_ = next_pc; 
-}
-
-
-uint32_t CPU::read_pc() const{
-	return pc_; 
-}
